@@ -21,4 +21,5 @@ jobs:
           exit 1
       
       - name: Say Goodbye
+        if: ${{ always() }}
         run: echo "Goodbye, World!"
