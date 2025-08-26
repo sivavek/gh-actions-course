@@ -1,12 +1,12 @@
 name: 02 - Workflow Events
 on:
-  push: 
+  pull_request: 
 jobs:
   echo:
     runs-on: ubuntu-latest
     steps:
       - name: Show the trigger 
         run: |
-          echo "This workflow was triggered by a ${{ github.event_name }} event to the ${{ github.base_ref }} branch."
+          echo "This workflow was triggered by a ${{ github.event_name }} event to the ${{ github.ref_name }} branch."
           echo "Full ref: $GITHUB_REF"
           echo "Short ref: ${{ github.ref_name }}"
