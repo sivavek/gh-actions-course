@@ -1,9 +1,6 @@
 name: 01 - Building Blocks
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   echo-hello:
@@ -19,7 +16,7 @@ jobs:
         run: |
           echo "This step will fail"
           exit 0
-                
+
       - name: Say Goodbye
         if: ${{ always() }}
         run: echo "Goodbye, World!"
