@@ -6,4 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Show the trigger 
-        run: echo "This workflow was triggered by a ${{ github.event_name }} event to the ${{ github.base_ref }} branch."
+        run: |
+          echo "This workflow was triggered by a ${{ github.event_name }} event to the ${{ github.base_ref }} branch."
+          echo "Full ref: $GITHUB_REF"
+          echo "Short ref: ${{ github.ref_name }}"
