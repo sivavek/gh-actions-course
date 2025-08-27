@@ -7,13 +7,19 @@ on:
         description: 'Enable debug mode'
         required: false
         default: 'false'
-  push:
-    branches:
-      - main
-  
+  # push:
+  #   branches:
+  #     - main
+env:
+  MY_WORKFLOW_VAR: 'workflow'
+  MY_OVERWRITTEN_VAR: 'workflow'  
+
 jobs:
   echo-data:
     runs-on: ubuntu-latest
+    env:
+      MY_JOB_VAR: 'job'
+      MY_OVERWRITTEN_VAR: 'job'
     steps:
       - name: Display Information
         run: |
@@ -32,7 +38,11 @@ jobs:
           echo "GraphQL URL: ${{ github.graphql_url }}"
       - name: Retreive variable
         run: echo "The value of MY_VAR is ${{ env.MY_VAR }}"
-        env:
-          MY_VAR: "Hello, World!"
+       
+      - name: Print Env Variables
+        run: |
+          echo "MY_WORKFLOW_VAR: $MY_WORKFLOW_VAR"
+          echo "MY_JOB_VAR: $MY_JOB_VAR"
+          echo "MY_OVERWRITTEN_VAR: $MY_OVERWRITTEN_VAR"
 
       
