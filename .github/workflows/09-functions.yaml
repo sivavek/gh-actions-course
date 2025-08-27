@@ -9,13 +9,18 @@ jobs:
     steps:
       - name: Print PR title
         if: ${{ github.event_name == 'pull_request' }}
-        run: echo "The title of the PR is '${{ github.event.pull_request.title }}'"
+        run: |
+          cat << EOF
+          echo "The title of the PR is '${{ github.event.pull_request.title }}'"
+          EOF
 
       - name: Print PR labels
         if: ${{ github.event_name == 'pull_request' }}
         run: |
+          cat << EOF
           echo "The labels of the PR are:"
           echo "${{ toJson(github.event.pull_request.labels) }}"
+          EOF
 
       - name: Bug step
         if: ${{ !cancelled() && contains(join(github.event.pull_request.labels.*.name, ' '), 'fix') }}
