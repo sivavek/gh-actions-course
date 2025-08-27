@@ -7,20 +7,20 @@ jobs:
   echo1:
     runs-on: ubuntu-latest
     steps:
-      - name: Print PR title
-        if: ${{ github.event_name == 'pull_request' }}
-        run: echo "The title of the PR is '${{ github.event.pull_request.title }}'"
+      # - name: Print PR title
+      #   if: ${{ github.event_name == 'pull_request' }}
+      #   run: echo "The title of the PR is '${{ github.event.pull_request.title }}'"
 
-      - name: Print PR labels
-        if: ${{ github.event_name == 'pull_request' }}
-        run: |
-          echo "The labels of the PR are:"
-          echo "${{ toJson(github.event.pull_request.labels) }}"
+      # - name: Print PR labels
+      #   if: ${{ github.event_name == 'pull_request' }}
+      #   run: |
+      #     echo "The labels of the PR are:"
+      #     echo "${{ toJson(github.event.pull_request.labels) }}"
 
-      - name: Bug step
-        if: ${{ !cancelled() && contains(join(github.event.pull_request.labels.*.name, ' '), 'fix') }}
-        run: echo "I am a bug fix"
-        
+      # - name: Bug step
+      #   if: ${{ !cancelled() && contains(join(github.event.pull_request.labels.*.name, ' '), 'fix') }}
+      #   run: echo "I am a bug fix"
+
       # - name: Sleep for 20 seconds
       #   run: sleep 20
 
@@ -28,7 +28,7 @@ jobs:
         run: exit 1
 
       - name: I will be skipped
-        if: ${{ always() }}
+        if: ${{ success() }}
         run: echo "I will print if previous steps succeed."
 
       - name: I will execute
