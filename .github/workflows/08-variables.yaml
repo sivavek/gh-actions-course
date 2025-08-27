@@ -5,6 +5,7 @@ on:
 env:
   WORKFLOW_VAR: 'I am a workflow env var'
   OVERWRITTEN: 'I will be overwritten'
+  UNDEFINED_VAR_WITH_DEFAULT: ${{ vars.UNDEFINED_VAR || 'I am a default value' }}
 
 jobs:
   echo:
@@ -30,3 +31,18 @@ jobs:
         run: |
           echo "Step env var: $OVERWRITTEN"
 
+  echo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print Variables
+        run: |
+          echo "Repo Variable: ${{ vars.REPOSITORY_VAR }}"
+  
+  echo-prod:
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Print Prod Variables
+        run: |
+          echo "Environment Variable: ${{ vars.ENV_VAR_PROD }}"
+          echo "Undefined Variable with Default: $UNDEFINED_VAR_WITH_DEFAULT"
