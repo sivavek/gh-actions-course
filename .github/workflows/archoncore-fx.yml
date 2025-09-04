@@ -1,0 +1,424 @@
+name: Test [Archoncore-FX-CI] 
+on: 
+  push: 
+    branches: 
+      - feature/tc4080-alienware-gha 
+  workflow_dispatch: 
+jobs: 
+  build: 
+    runs-on: isg-ocp-x86-win-large 
+    steps: 
+      - name: Checkout code 
+        uses: actions/checkout@v4 
+        with: 
+          repository: CSG-Client-Enablement-Software/archoncore 
+          ref: ${{ github.ref }} 
+          
+    # - name: Setup JFrog CLI 
+    # uses: ghe-actions/jfrog-setup-jfrog-cli@v4 
+    # with: 
+      # version: latest 
+      # env: 
+        # JF_URL: https:/durjpd.artifactory.cec.lab.emc.com/artifactory 
+        # JF_ACCESS_TOKEN: ${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }} 
+        
+      - name: Download ArchonCore artifacts 
+        shell: powershell 
+        run: | 
+          jfrog rt download "ces-archoncore/artifacts/DFUDriver/" "$env:GITHUB_WORKSPACE\FX\Installer\FXELC_Installer\ELCBinaries\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          jfrog rt download "ces-archoncore/artifacts/Firmware/" "$env:GITHUB_WORKSPACE\FX\Installer\FXELC_Installer\ELCBinaries\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          jfrog rt download "ces-archoncore/artifacts/Tools/" "$env:GITHUB_WORKSPACE\FX\Installer\FXELC_Installer\ELCBinaries\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          jfrog rt download "ces-archoncore/artifacts/Tools/" "$env:GITHUB_WORKSPACE\FX\Installer\FXDarfonRGBPKInstaller\FXDarfonRGBPKFirmware\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          jfrog rt download "ces-archoncore/artifacts/DarfonFirmware/" "$env:GITHUB_WORKSPACE\FX\Installer\FXDarfonRGBPKInstaller\FXDarfonRGBPKFirmware\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          
+      - name: Debug - list workspace contents 
+        shell: powershell 
+        run: | 
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Recurse 
+          
+      - name: Update global.json to match installed SDK 
+        shell: powershell 
+        run: | 
+          $globalJsonPath = Join-Path $env:GITHUB_WORKSPACE "global.json" 
+          $jsonContent = @{ 
+            sdk = @{ 
+              version = "8.0.407" 
+            } 
+          } | ConvertTo-Json -Depth 3 
+          Set-Content -Path $globalJsonPath -Value $jsonContent -Encoding UTF8 
+          
+      - name: Nuget restore 
+        shell: powershell 
+        run: | 
+          echo "Nuget restore AlienFXFEPlugin.sln" 
+          set "PATH=C:\Tools\NuGet;%PATH%" 
+          $solution = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter AlienFXFEPlugin.sln | Select-Object -First 1 
+          if (-not $solution) { throw "Solution file not found" } 
+          Write-Host "Restoring NuGet packages for $($solution.FullName)" 
+          & "C:\Tools\NuGet\nuget.exe" sources update -Name "DellClientFramework" -UserName "${{ vars.CPG_ARTIFACTORY_USERNAME }}" -Password "${{ secrets.CPG_ARTIFACTORY_PASS }}" 
+          & "C:\Tools\NuGet\nuget.exe" restore "$($solution.FullName)" 
+          
+      - name: check versions 
+        run: | 
+          dir "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Microsoft\VisualStudio\v17.0\" 
+          
+      - name: Build 
+        shell: cmd 
+        env: 
+          ProductVersion: 6.10.0.0 
+          Configuration: Release 
+          ConfigurationAttr: Release 
+        run: | 
+          echo Build AlienFXFEPlugin.sln 
+          $env:Path += ";C:\Program Files\dotnet" 
+          $env:MSBuildSDKsPath = "C:\Program Files\dotnet\sdk\8.0.407\Sdks" 
+          $env:Path += ";C:\Program Files\dotnet" 
+          $env:DOTNET_ROOT = "C:\Program Files\dotnet" 
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" 
+          set PATH=C:\Tools\NuGet;%PATH% 
+          echo Building with MSBuild 
+          # Below step needs to be checked 
+          msbuild "%GITHUB_WORKSPACE%\FX\AlienFXFEPlugin.sln" /t:restore /t:reBuild /property:Platform=x64 /p:Configuration=Release;RunCodeAnalysis=False;RestorePackagesConfig=true /p:Version=6.10.0.0 /p:FileVersion=6.10.0.0 /p:Copyright="Copyright 2023 Dell Inc. or its subsidiaries. All Rights Reserved." /p:Product="Alienware Command Center" 
+          
+      - name: Debug - list workspace contents 
+        shell: powershell 
+        run: | 
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Recurse 
+          
+      - name: Prepare FX binaries for signing 
+        shell: cmd 
+        env: 
+          ProductVersion: 6.10.0.0 
+          Configuration: Release 
+          ConfigurationAttr: Release 
+        run: | 
+          echo Preparing FX binaries to be signed 
+          echo Make FilesToSign folder directory under %GITHUB_WORKSPACE%\FX\bin 
+          mkdir "%GITHUB_WORKSPACE%\FX\bin\FilesToSign\files_signed" 
+          
+          IF "%Configuration%"=="Release" ( 
+            echo Copy files from FX\bin output path to FilesToSign excluding unnecessary files 
+            robocopy "%GITHUB_WORKSPACE%\FX\bin" "%GITHUB_WORKSPACE%\FX\bin\FilesToSign\files_signed" * /E /xf *.xml *.png *.xbf *.xaml /XD "%GITHUB_WORKSPACE%\FX\bin\PluginInterfaceDLL" "%GITHUB_WORKSPACE%\FX\bin\x64" "%GITHUB_WORKSPACE%\FX\bin\FilesToSign" 
+            
+            echo copy completed FX binaries to be signed 
+          ) 
+            
+          exit 0 
+          
+      - name: Debug - list workspace contents 
+        shell: powershell 
+        run: | 
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Recurse 
+          
+      - name: Upload Archoncore FX Bin 
+        uses: actions/upload-artifact@v3 
+        with: 
+          name: archoncore-fx-bin 
+          path: | 
+            ${{ github.workspace }}/FX/bin/FilesToSign/files_signed/ 
+          retention-days: 14 
+          
+  Code-Signing-Upload-Artifactory: 
+    needs: [build] 
+    runs-on: [isg-ocp-x86-small] 
+    continue-on-error: true 
+    steps: 
+      - name: download artifact 
+        uses: actions/download-artifact@v3 
+        with: 
+          name: archoncore-fx-bin 
+          path: bin 
+          
+      - name: Check downloaded files 
+        shell: bash 
+        run: | 
+          echo "Listing all files in bin folder..." 
+          ls -alR bin 
+          
+      - name: Install 7Zip 
+        run: | 
+          sudo apt-get update 
+          sudo apt-get install -y 
+          p7zip-full 7z 
+          
+      - name: Create Zip File with package .dll/.exe 
+        run: | 
+          cd "${{github.workspace}}/bin/" 
+          mkdir ${{github.workspace}}/archives/ 
+          7z a -tzip ${{github.workspace}}/archives/bin.zip -r '*.msi' '*.exe' '*.dll' 
+          
+      - name: Code Signing 
+        uses: CSG-AiDevSecOps/csg-gh-actions/.github/actions/drp-code-signing@main 
+        with: 
+          SIGN_DIRECTORIES: 'archives' 
+          CSSV3_AUTH_PUBLIC_KEY: ${{ secrets.SRO_CSS_AUTH_PUB_KEY }} 
+          SIGN_FILE_TYPES: 'exe,dll,msi' 
+          CERT_NAME: 'dell_cpgroupEV2024' 
+          SIGN_USECASE: 'grswa' 
+          ZIP_FILE_SIGN: 'true' 
+          EXTRACT_TYPE: 'yes' 
+          TIMEOUT: '6000' 
+          
+      - name: Unzip Signed Files 
+        run: | 
+          mkdir -p "$GITHUB_WORKSPACE/bin/FilesToSign/files_signed" 
+          mv ${{github.workspace}}/archives/bin.zip.signed ${{github.workspace}}/archives/bin.zip 
+          unzip -o ${{github.workspace}}/archives/bin.zip -d "${{github.workspace}}/bin/FilesToSign/files_signed/" 
+          rm ${{github.workspace}}/archives/bin.zip 
+          
+      - name: Check downloaded files 
+        shell: bash 
+        run: | 
+          echo "Listing all files in bin folder..." 
+          ls -alR bin 
+          
+      - name: Upload Antares Signed Bin 
+        uses: actions/upload-artifact@v3 
+        with: 
+          name: archoncore-signed-bin 
+          path: | 
+            ${{ github.workspace }}/bin/ 
+          retention-days: 14 
+          
+  Archoncore-Core-Installer: 
+    needs: [build, Code-Signing-Upload-Artifactory] 
+    runs-on: isg-ocp-x86-win-large 
+    steps: 
+      - name: Checkout code 
+        uses: actions/checkout@v4 
+        with: 
+          repository: CSG-Client-Enablement-Software/archoncore 
+          ref: ${{ github.ref }} 
+            
+      - name: Download ArchonCore artifacts 
+        shell: powershell 
+        run: | 
+          jfrog rt download "ces-archoncore/artifacts/DFUDriver/" "$env:GITHUB_WORKSPACE\FX\Installer\FXELC_Installer\ELCBinaries\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          jfrog rt download "ces-archoncore/artifacts/Firmware/" "$env:GITHUB_WORKSPACE\FX\Installer\FXELC_Installer\ELCBinaries\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          jfrog rt download "ces-archoncore/artifacts/Tools/" "$env:GITHUB_WORKSPACE\FX\Installer\FXELC_Installer\ELCBinaries\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          jfrog rt download "ces-archoncore/artifacts/Tools/" "$env:GITHUB_WORKSPACE\FX\Installer\FXDarfonRGBPKInstaller\FXDarfonRGBPKFirmware\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          jfrog rt download "ces-archoncore/artifacts/DarfonFirmware/" "$env:GITHUB_WORKSPACE\FX\Installer\FXDarfonRGBPKInstaller\FXDarfonRGBPKFirmware\" --url="https://durjpd.artifactory.cec.lab.emc.com:443/artifactory" --access-token="${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}" 
+          
+      - name: Debug - list workspace contents 
+        shell: powershell 
+        run: | 
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Recurse 
+          
+      - name: Update global.json to match installed SDK 
+        shell: powershell 
+        run: | 
+          $globalJsonPath = Join-Path $env:GITHUB_WORKSPACE "global.json" 
+          $jsonContent = @{ 
+            sdk = @{ 
+              version = "8.0.407" 
+            } 
+          } | ConvertTo-Json -Depth 3 
+          Set-Content -Path $globalJsonPath -Value $jsonContent -Encoding UTF8 
+          
+      - name: Nuget restore 
+        run: | 
+          echo "Nuget restore AlienFXFEPlugin.sln" 
+          set "PATH=C:\Tools\NuGet;%PATH%" 
+          $solution = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter AlienFXFEPlugin.sln | Select-Object -First 1 
+          if (-not $solution) { throw "Solution file not found" } 
+          Write-Host "Restoring NuGet packages for $($solution.FullName)" 
+          & "C:\Tools\NuGet\nuget.exe" sources update -Name "DellClientFramework" -UserName "${{ vars.CPG_ARTIFACTORY_USERNAME }}" -Password "${{ secrets.CPG_ARTIFACTORY_PASS }}" 
+          & "C:\Tools\NuGet\nuget.exe" restore "$($solution.FullName)" 
+          
+      - name: Build 
+        shell: cmd 
+        env: 
+          ProductVersion: 6.10.0.0 
+          Configuration: Release 
+          ConfigurationAttr: Release 
+        run: | 
+          echo Build AlienFXFEPlugin.sln 
+          
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" 
+          set PATH=C:\Tools\NuGet;%PATH% 
+          echo Building with MSBuild 
+          msbuild "%GITHUB_WORKSPACE%\FX\AlienFXFEPlugin.sln" /t:restore /t:reBuild /property:Platform=x64 /p:Configuration=Release;RunCodeAnalysis=False;RestorePackagesConfig=true /p:Version=6.10.0.0 /p:FileVersion=6.10.0.0 /p:Copyright="Copyright 2023 Dell Inc. or its subsidiaries. All Rights Reserved." /p:Product="Alienware Command Center" 
+          
+      - name: download artifact 
+        uses: actions/download-artifact@v3 
+        with: 
+          name: archoncore-signed-bin 
+          path: ${{ github.workspace }}/FX/bin/ 
+          
+      - name: Debug - list workspace contents 
+        shell: powershell 
+        run: | 
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Recurse 
+          
+      - name: Copy unsigned FX binaries to signing folder 
+        shell: cmd 
+        env: 
+          ProductVersion: 6.10.0.0 
+          Configuration: Release 
+          ConfigurationAttr: Release 
+        run: | 
+          IF "%Configuration%"=="Release" ( 
+            echo Copy excluded files after signing job completion from FX\bin output path to files_Signed folder 
+            robocopy /s "%GITHUB_WORKSPACE%\FX\bin" "%GITHUB_WORKSPACE%\FX\bin\FilesToSign\files_signed" * /XD "%GITHUB_WORKSPACE%\FX\bin\PluginInterfaceDLL" "%GITHUB_WORKSPACE%\FX\bin\x64" "%GITHUB_WORKSPACE%\FX\bin\FilesToSign" 
+            
+            echo copy completed remaining files 
+          ) ELSE ( 
+            echo Debug --> Copy files from FX\bin output path to FilesToSign\files_signed for debug 
+            robocopy /s "%GITHUB_WORKSPACE%\FX\bin" "%GITHUB_WORKSPACE%\FX\bin\FilesToSign\files_signed" * ^ 
+              /XD "%GITHUB_WORKSPACE%\FX\bin\PluginInterfaceDLL" "%GITHUB_WORKSPACE%\FX\bin\x64" "%GITHUB_WORKSPACE%\FX\bin\FilesToSign" "%GITHUB_WORKSPACE%\FX\bin\FilesToSign\files_signed" 
+              
+            echo Debug --> Rename Debug folders to release folder 
+            set strRel=Release 
+            for /d /r "%GITHUB_WORKSPACE%\FX\bin\FilesToSign\files_signed" %%i in (*) do ( 
+              if "%%~nxi"=="Debug" ( 
+                echo copy operation for %%i to %%~di%%~piRelease 
+                robocopy %%i %%~di%%~piRelease /is /it /copyall /mir 
+              ) 
+            ) 
+            echo Debug --> copy completed FX binaries 
+          ) 
+            
+          exit 0 
+          
+      - name: Debug - list workspace contents 
+        shell: powershell 
+        run: | 
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Recurse 
+          
+      - name: Build FX Installers 
+        shell: powershell 
+        env: 
+          Configuration: Release 
+          IsProductionBuild: true 
+          FXCoreProductVersion: 6.10.0.0 
+          FXELCProductVersion: 6.10.0.0 
+          FXDarfonRGBPKProductVersion: 6.10.0.0 
+        run: | 
+          echo Building FX Installers 
+          cd "C:\Program Files (x86)\InstallShield\2023 SAB\System" 
+          
+          write-host "Building FX Installers" 
+          
+          if ($env:Configuration -eq "Release"){ 
+            $ReleaseConfiguration = "Release1" 
+            if ($env:IsProductionBuild -eq "$true") { 
+              $ReleaseConfiguration = "ReleaseSigned" 
+            } 
+            if ($env:FXCoreProductVersion -ne $null) { 
+              $TempGuid=[guid]::NewGuid() 
+              $ProductCode = "{" + $TempGuid.ToString().ToUpper() + "}" 
+              $TempGuid=[guid]::NewGuid() 
+              $PackageCode = "{" + $TempGuid.ToString().ToUpper() + "}" 
+              write-host "Parameters --> Product code is $ProductCode; Package Code is $PackageCode; ProductVersion is $env:FXCoreProductVersion; Application; $ReleaseConfiguration" 
+              .\ISCmdBld.exe -p "$env:GITHUB_WORKSPACE\FX\Installer\FXCore\FXCoreInstaller.ism" -y "$env:FXCoreProductVersion" -z "ProductCode=$ProductCode" -z "PackageCode=$PackageCode" -a "Application" -r "$ReleaseConfiguration" 
+            } 
+            else 
+            { 
+              write-host "Parameters --> Default ProductCode; Default PackageCode; Default ProductVersion; Application; $ReleaseConfiguration" 
+              .\ISCmdBld.exe -p "$env:GITHUB_WORKSPACE\FX\Installer\FXCore\FXCoreInstaller.ism" -a "Application" -r "$ReleaseConfiguration" 
+            } 
+          } 
+          else 
+          { 
+            write-host "Parameters --> Default ProductCode; Default PackageCode; Default ProductVersion; Application; Release1" 
+            .\ISCmdBld.exe -p "$env:GITHUB_WORKSPACE\FX\Installer\FXCore\FXCoreInstaller.ism" -a "Application" -r "Release1" 
+            
+          } 
+            
+          write-host "Building FXELC Installer" 
+          if ($env:Configuration -eq "Release") 
+          { 
+            $ReleaseConfiguration = "Release1" 
+            if ($env:IsProductionBuild -eq "$true") 
+            { 
+              $ReleaseConfiguration = "ReleaseSigned" 
+            } 
+              
+            if ($env:FXELCProductVersion -ne $null) 
+            { 
+              $TempGuid=[guid]::NewGuid() 
+              $ProductCode = "{" + $TempGuid.ToString().ToUpper() + "}" 
+              $TempGuid=[guid]::NewGuid() 
+              $PackageCode = "{" + $TempGuid.ToString().ToUpper() + "}" 
+              write-host "Parameters --> Product code is $ProductCode; Package Code is $PackageCode; ProductVersion is $ENV:FXELCProductVersion; Application; $ReleaseConfiguration" 
+              .\ISCmdBld.exe -p "$env:GITHUB_WORKSPACE\FX\Installer\FXELC_Installer\FXELCInstaller\FXELCInstaller.ism" -y "$env:FXELCProductVersion" -z "ProductCode=$ProductCode" -z "PackageCode=$PackageCode" -a "Application" -r "$ReleaseConfiguration" 
+            } 
+              
+            else 
+            { 
+              write-host "Parameters --> Default ProductCode; Default PackageCode; Default ProductVersion; Application; $ReleaseConfiguration" 
+              .\ISCmdBld.exe -p "$env:GITHUB_WORKSPACE\FX\Installer\FXELC_Installer\FXELCInstaller\FXELCInstaller.ism" -a "Application" -r "$ReleaseConfiguration" 
+            } 
+          } 
+          else 
+          { 
+            write-host "Parameters --> Default ProductCode; Default PackageCode; Default ProductVersion; Application; Release1" 
+            .\ISCmdBld.exe -p "$env:GITHUB_WORKSPACE\FX\Installer\FXELC_Installer\FXELCInstaller\FXELCInstaller.ism" -a "Application" -r "Release1" 
+          } 
+            
+          write-host "Building FXELC Installer" 
+          if ($env:Configuration -eq "Release") 
+          { 
+            $ReleaseConfiguration = "Release1" 
+            if ($env:IsProductionBuild -eq "$true") 
+            { 
+              $ReleaseConfiguration = "ReleaseSigned" } 
+              if ($env:FXDarfonRGBPKProductVersion -ne $null) 
+              { 
+                $TempGuid=[guid]::NewGuid() 
+                $ProductCode = "{" + $TempGuid.ToString().ToUpper() + "}" 
+                $TempGuid=[guid]::NewGuid() 
+                $PackageCode = "{" + $TempGuid.ToString().ToUpper() + "}" 
+                write-host "Parameters --> Product code is $ProductCode; Package Code is $PackageCode; ProductVersion is $env:FXDarfonRGBPKProductVersion; Application; $ReleaseConfiguration" 
+                .\ISCmdBld.exe -p "$env:GITHUB_WORKSPACE\FX\Installer\FXDarfonRGBPKInstaller\FXDarfonRGBPKInstaller\FXDarfonRGBPKInstaller.ism" -y "$env:FXDarfonRGBPKProductVersion" -z "ProductCode=$ProductCode" -z "PackageCode=$PackageCode" -a "Application" -r "$ReleaseConfiguration" 
+              } 
+              else 
+              { 
+                write-host "Parameters --> Default ProductCode; Default PackageCode; Default ProductVersion; Application; $ReleaseConfiguration" 
+                .\ISCmdBld.exe -p "$env:GITHUB_WORKSPACE\FX\Installer\FXDarfonRGBPKInstaller\FXDarfonRGBPKInstaller\FXDarfonRGBPKInstaller.ism" -a "Application" -r "$ReleaseConfiguration" 
+              } 
+            } 
+            else 
+            { 
+              write-host "Parameters --> Default ProductCode; Default PackageCode; Default ProductVersion; Application; Release1" 
+              .\ISCmdBld.exe -p "$env:GITHUB_WORKSPACE\FX\Installer\FXDarfonRGBPKInstaller\FXDarfonRGBPKInstaller\FXDarfonRGBPKInstaller.ism" -a "Application" -r "Release1" 
+            } 
+            exit 0 
+      - name: Generate MSI files with Devenv 
+        shell: cmd 
+        run: | 
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" 
+          
+          echo "Building FX device Infinity Installer" 
+          "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\devenv.exe" "%GITHUB_WORKSPACE%\FX\Installer\FXDevice_Installer_Infinity\FXDevice_Installer_Infinity.sln" /build "Release|Default" /out "%GITHUB_WORKSPACE%\FX\Installer\FXDevice_Installer_Infinity\FXDevice_Installer\infinityBuildOutput.log" 
+          
+          echo "Building FX device NexusInstaller" 
+          "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\devenv.exe" "%GITHUB_WORKSPACE%\FX\Installer\FXDeviceInstaller_Nexus\FXDeviceInstaller_Nexus.sln" /build "Release|Default" /out "%WORKSPACE%\FX\Installer\FXDeviceInstaller_Nexus\FXDeviceInstaller_Nexus\NexusBuildOutput.log" 
+          
+          echo "Building FX device Galio Installer" 
+          "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\devenv.exe" "%GITHUB_WORKSPACE%\FX\Installer\FXDeviceInstaller_Galio\FXDevice_Installer_Galio.sln" /build "Release|Default" /out "%WORKSPACE%\FX\Installer\FXDeviceInstaller_Galio\FXDevice_Installer_Galio\GalioBuildOutput.log" 
+          
+          echo "Building FX device Bastion Installer" 
+          "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\devenv.exe" "%GITHUB_WORKSPACE%\FX\Installer\FXDevice_Installer_Bastion\FXDevice_Installer_Bastion.sln" /build "Release|Default" /out "%WORKSPACE%\FX\Installer\FXDevice_Installer_Bastion\FXDevice_Installer_Bastion\BastionBuildOutput.log" 
+          
+          echo "Building FX Device Scorpio Installer" 
+          "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\devenv.exe" "%GITHUB_WORKSPACE%\FX\Installer\FXDeviceInstaller_Scorpio\FXDeviceInstaller_Scorpio.sln" /build "Release|Default" /out "%WORKSPACE%\FX\Installer\FXDeviceInstaller_Scorpio\FXDeviceInstaller_Scorpio\ScorpioBuildOutput.log" 
+          
+          echo "Building FX device FXDeviceInstaller_Arwing Installer" 
+          "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\devenv.exe" "%GITHUB_WORKSPACE%\FX\Installer\FXDeviceInstaller_Arwing\FXDeviceInstaller_Arwing.sln" /build "Release|Default" /out "%WORKSPACE%\FX\Installer\FXDeviceInstaller_Arwing\FXDeviceInstaller_Arwing\FXDeviceInstaller_ArwingBuildOutput.log" 
+      - name: Debug - list workspace contents 
+        shell: powershell 
+        run: | 
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\FX\Installer\FXDevice_Installer_Infinity\" -Recurse 
+          
+      - name: Debug - list workspace contents 
+        shell: powershell  
+        run: | 
+          # $relDir = Join-Path $env:GITHUB_WORKSPACE "FX\Installer\FXDevice_Installer_Infinity\FXDevice_Installer\Release" 
+          # if (Test-Path $relDir) { 
+          #   Get-ChildItem -LiteralPath $relDir -Recurse 
+          # } else { 
+          #   Write-Warning "Release folder not found - installer build probably failed." 
+          # } 
+            
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\FX\Installer\FXDevice_Installer_Infinity\FXDevice_Installer\Release\" -Recurse
