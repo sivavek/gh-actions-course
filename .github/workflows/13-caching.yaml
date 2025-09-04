@@ -10,11 +10,14 @@ on:
   push:
     branches:
       - main
-      
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    working-directory: ./13-caching/react-app
+    defaults:
+      run:
+        working-directory: ./13-caching/react-app
+        
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
