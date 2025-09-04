@@ -16,10 +16,6 @@ on:
           - '20.x'
         default: '20.x'
 
-  push:
-    branches:
-      - main
-
 jobs:
   build:
     runs-on: ubuntu-latest
