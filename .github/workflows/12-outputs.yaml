@@ -12,6 +12,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.build.outputs.status }}
     steps:
       - name: Print GITHUB_OUTPUT path
         run: echo "GITHUB_OUTPUT is set to $GITHUB_OUTPUT"
@@ -29,4 +31,3 @@ jobs:
       - name: Deploy
         run: echo "Deploying application as build was successful"
 
-        
