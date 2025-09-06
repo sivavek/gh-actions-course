@@ -1,0 +1,20 @@
+name: 16 - Working with Environments
+run-name: 16 - Working with Environments | env - ${{ github.event.inputs.targer-env  }}
+on:
+  workflow_dispatch:
+    inputs:
+      targer-env:
+        type: environment
+        default: staging
+        description: 'Select the target environment for deployment'
+jobs:
+  echo:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.targer-env }}
+    env:
+      my-env-value: MY_ENV_VALUE
+    steps:
+      - name: Echo Vars
+        run: |
+          echo "The target environment is ${{ github.event.inputs.targer-env }}"
+          echo "The env value is $my-env-value"
