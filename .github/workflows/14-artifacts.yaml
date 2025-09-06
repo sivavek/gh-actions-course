@@ -8,7 +8,7 @@ env:
 
 jobs:
   test-build:
-    runs-on: uvuntu-latest
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./13-caching/react-app
