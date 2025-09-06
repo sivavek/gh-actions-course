@@ -17,16 +17,12 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Calculate cache key
-      id: cache-key
-      run: echo "CACHE_KEY=node-modules-${{ hashFiles('${{ inputs.working-dir }}/package-lock.json') }}" >> $GITHUB_OUTPUT
-
     - name: Download cached dependencies
       id: cache
       uses: actions/cache@v3
       with:
         path: ${{ inputs.working-dir }}/node_modules
-        key: ${{ steps.cache-key.outputs.CACHE_KEY }}
+        key: node-modules-${{ hashFiles('${{ inputs.working-dir }}/package-lock.json') }}
 
     - name: Install dependencies
       if: steps.cache.outputs.cache-hit != 'true'
