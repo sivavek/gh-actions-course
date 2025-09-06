@@ -2,39 +2,39 @@ name: 15 - Working with Matrices
 on:
   workflow_dispatch:
 jobs:
-  backwards-compatibility:
-    name: ${{ matrix['node-version'] }} on ${{ matrix['os'] }}
-    runs-on: ${{ matrix['os'] }}
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: ['18.x', '20.x', '21.x']
-        os: [ubuntu-latest, windows-latest, ]
-        include:
-          - node-version: '16.x'
-            os: ubuntu-latest
+  # backwards-compatibility:
+  #   name: ${{ matrix['node-version'] }} on ${{ matrix['os'] }}
+  #   runs-on: ${{ matrix['os'] }}
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       node-version: ['18.x', '20.x', '21.x']
+  #       os: [ubuntu-latest, windows-latest, ]
+  #       include:
+  #         - node-version: '16.x'
+  #           os: ubuntu-latest
 
-          - node-version: '21.x'
-            os: ubuntu-latest
-            tags: experimental
-    steps:
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix['node-version'] }}
-      - name: Fail if experimental
-        if: ${{ contains(matrix.tags, 'experimental') }}
-        run: |
-          echo "Node.js version ${{ matrix['node-version'] }} is experimental and not supported in this workflow."
-          exit 1
+  #         - node-version: '21.x'
+  #           os: ubuntu-latest
+  #           tags: experimental
+  #   steps:
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ matrix['node-version'] }}
+  #     - name: Fail if experimental
+  #       if: ${{ contains(matrix.tags, 'experimental') }}
+  #       run: |
+  #         echo "Node.js version ${{ matrix['node-version'] }} is experimental and not supported in this workflow."
+  #         exit 1
 
-      - name: Test Node.js version
-        run: |
-          echo "Performing tests on Node.js version ${{ matrix['node-version'] }} on ${{ matrix['os'] }}"
-          sleep 5
+  #     - name: Test Node.js version
+  #       run: |
+  #         echo "Performing tests on Node.js version ${{ matrix['node-version'] }} on ${{ matrix['os'] }}"
+  #         sleep 5
 
-      - name: upload logs
-        run: echo "Uploading logs for Node.js version ${{ matrix['node-version'] }} on ${{ matrix['os'] }}"
+  #     - name: upload logs
+  #       run: echo "Uploading logs for Node.js version ${{ matrix['node-version'] }} on ${{ matrix['os'] }}"
 
 
   include-example:
@@ -46,11 +46,13 @@ jobs:
         size: [small, large]
         shape: [circle, square]
         include:
-          - color: red
+          - opacity: 0.5
+            color: red
             shape: triangle
             purpose: "Special case for blue medium triangle"
     steps:
       - name: Display combination
         run: |
-          echo "Color: ${{ matrix.color }}, Shape: ${{ matrix.shape }}, Size: ${{ matrix.size }}"
+          echo "Color: ${{ matrix.color }}, Shape: ${{ matrix.shape }}, Size: ${{ matrix.size }}, Opacity: ${{ matrix.opacity || 'default' }}"
+          
 
