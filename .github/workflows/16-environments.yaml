@@ -10,7 +10,7 @@ jobs:
     steps:
       - name: Echo Vars
         run: |
-          echo ""Deploying to staging"
+          echo "Deploying to staging"
   e2e-tests:
     runs-on: ubuntu-latest
     needs: deploy-staging
