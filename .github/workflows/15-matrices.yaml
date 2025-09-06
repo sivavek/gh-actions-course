@@ -6,15 +6,34 @@ jobs:
     name: ${{ matrix['node-version'] }} on ${{ matrix['os'] }}
     runs-on: ${{ matrix['os'] }}
     strategy:
+      fail-fast: false
       matrix:
         node-version: ['18.x', '20.x', '21.x']
         os: [ubuntu-latest, windows-latest, ]
+        include:
+          - node-version: '16.x'
+            os: ubuntu-latest
+
+          - node-version: '21.x'
+            os: ubuntu-latest
+            tags: experimental
     steps:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix['node-version'] }}
+      - name: Fail if experimental
+        if: ${{ contains(matrix.tags, 'experimental') }}
+        run: |
+          echo "Node.js version ${{ matrix['node-version'] }} is experimental and not supported in this workflow."
+          exit 1
 
       - name: Test Node.js version
-        run: echo "Performing tests on Node.js version ${{ matrix['node-version'] }} on ${{ matrix['os'] }}"
+        run: |
+          echo "Performing tests on Node.js version ${{ matrix['node-version'] }} on ${{ matrix['os'] }}"
+          sleep 10
+
+      - name: upload logs
+        run: echo "Uploading logs for Node.js version ${{ matrix['node-version'] }} on ${{ matrix['os'] }}"
+
 
