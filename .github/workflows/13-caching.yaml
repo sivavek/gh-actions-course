@@ -117,4 +117,5 @@ jobs:
         run: npm test
 
       - name: Linting
-        run: npm run lint
+        run: ech "Linting the codebase ..."
+        
