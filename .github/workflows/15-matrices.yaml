@@ -38,7 +38,7 @@ jobs:
 
 
   include-example:
-    name: ${{ matrix.color }}-${{ matrix.shape }}-${{ matrix.size }}
+    name: ${{ matrix.color }}-${{ matrix.shape }}-${{ matrix.size }}-${{ matrix.opacity || 'default' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -54,5 +54,5 @@ jobs:
       - name: Display combination
         run: |
           echo "Color: ${{ matrix.color }}, Shape: ${{ matrix.shape }}, Size: ${{ matrix.size }}, Opacity: ${{ matrix.opacity || 'default' }}"
-          
+
 
