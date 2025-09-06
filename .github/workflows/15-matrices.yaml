@@ -37,3 +37,20 @@ jobs:
         run: echo "Uploading logs for Node.js version ${{ matrix['node-version'] }} on ${{ matrix['os'] }}"
 
 
+  include-example:
+    name: ${{ matrix.color }}-${{ matrix.shape }}-${{ matrix.size }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        color: [red, green]
+        size: [small, large]
+        shape: [circle, square]
+        include:
+          - color: red
+            shape: triangle
+            purpose: "Special case for blue medium triangle"
+    steps:
+      - name: Display combination
+        run: |
+          echo "Color: ${{ matrix.color }}, Shape: ${{ matrix.shape }}, Size: ${{ matrix.size }}"
+
