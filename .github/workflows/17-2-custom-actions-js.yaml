@@ -12,10 +12,13 @@ on:
         default: update-dependencies
       working-directory:
         description: 'The working directory of the project to check for dependency updates'
-        default: '.'
+        default: 17-custom-actions/react-app
         required: true
 
-        
+permissions:
+  contents: write
+  pull-requests: write
+  
 jobs:
   dependency-update:
     runs-on: ubuntu-latest
@@ -29,4 +32,4 @@ jobs:
           base-branch: ${{ inputs.base-branch }}
           target-branch: ${{ inputs.target-branch }}
           working-directory: ${{ inputs.working-directory }}
-          debug: ${{ inputs.debug }}
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
