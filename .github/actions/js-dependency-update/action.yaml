@@ -16,7 +16,6 @@ inputs:
   github-token:
     description: "Authentication token with repository access. Must have write access to contents and pull-requests"
     required: true
-    default: ${{ secrets.GITHUB_TOKEN }}
   debug:
     description: "Whether the output debug messages to the console"
     required: false
