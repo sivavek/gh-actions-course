@@ -16,8 +16,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     outputs:
-      build-status: ${{ steps.set-output.outputs.build-status }}
-      url: ${{ steps.set-output.outputs.url }}
+      build-status: ${{ steps.buildt.outputs.build-status }}
+      url: ${{ steps.deploy.outputs.url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
