@@ -1,0 +1,18 @@
+name: Ping URL
+description: "Ping URL until maximum trials have exceeded. If result is not 200 until then, fails the action."
+inputs:
+  url:
+    description: "The URL to ping"
+    required: true
+  max-trials:
+    description: "Maximum number of trials to ping the URL"
+    required: false
+    default: 10
+  delay-seconds:
+    description: "Number of seconds to wait between each trial"
+    required: false
+    default: 5
+runs:
+  using: docker
+  image: Dockerfile
+  
