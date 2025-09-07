@@ -1,0 +1,38 @@
+name: 17 - 1 - Custom Actions - Composite
+run-name: 17 - 1 - Custom Actions - Composite | env - ${{ inputs.target-env }}
+on:
+  workflow_dispatch:
+    inputs:
+      target-env:
+        description: 'The target environment for deployment'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+        default: staging
+env:
+  working-dir: './13-caching/react-app'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.working-dir }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup node and NPM dependencies
+        uses: ./.github/actions/composite-cache-deps
+        with:
+          node-version: '20.x'
+          working-dir: ${{ env.working-dir }}
+
+      - name: Run tests
+        run: npm run test 
+
+      - name: Build application
+        run: npm run build
+
+      
