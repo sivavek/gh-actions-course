@@ -1,0 +1,20 @@
+name: 18 - 2 - Reusable Workflows
+on:
+  workflow_dispatch:
+jobs:
+  deploy:
+    uses: ./.github/workflows/18-1-reusable-workflows.yaml
+    with:
+      target-directory: '13-caching/'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  print-outputs:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print outputs
+        run: |
+          echo "Build Status: ${{ needs.deploy.outputs.build-status }}"
+      - name: Print URL
+        run: |
+          echo "Deployed URL: ${{ needs.deploy.outputs.url }}"
