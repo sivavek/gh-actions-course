@@ -6,8 +6,8 @@ jobs:
     uses: ./.github/workflows/18-1-reusable-workflows.yaml
     with:
       target-directory: '13-caching/'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # secrets:
+    #   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   print-outputs:
     needs: deploy
     runs-on: ubuntu-latest
