@@ -24,7 +24,7 @@ jobs:
     environment:
       name: prod
     env:
-      my-env-value: ${{ vars.MY_ENV_VALUE }}
+      my-env-value: MY_ENV_VALUE
     steps:
       - name: Deploy to production
         run: |
