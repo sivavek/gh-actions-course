@@ -1,0 +1,349 @@
+name: NGA-CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      sourcecode_gitbranch:
+        description: 'Source code Git Branch'
+        required: true
+        type: string
+        default: feature-github-migration
+      repository:
+        description: 'Comma separated repositories ex: org/repoA, org/repoB'
+        required: true
+        type: string
+        default: CSG-Client-Enablement-Software/nga
+      production_environment:
+        description: 'Production environment'
+        required: true
+        default: true
+        type: boolean
+      run_unit_tests:
+        description: 'Run Unit Tests'
+        required: false
+        default: true
+        type: boolean
+      run_sonar_scan:
+       description: 'Run Sonar Scan'
+       required: false
+       default: false
+       type: boolean
+      BlackDuck:
+       description: 'Run BlackDuck binary scan'
+       required: true
+       default: true
+       type: boolean
+
+env:
+  isgArtifactoryUser: ${{ vars.CSG_TECHOPS_ARTIFACTORY_USERNAME }}
+  isgArtifactoryPassword: ${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}
+  ProductionEnvironment: ${{ inputs.production_environment }}
+
+jobs:
+  Env-Vars:
+    runs-on: [isg-ocp-x86-small]
+    outputs:
+      pg_name: ${{ steps.set-outputs.outputs.pg_name }}
+      scan_type: ${{ steps.set-outputs.outputs.scan_type }}
+      base_scan_type: ${{ steps.set-outputs.outputs.base_scan_type }}
+      sign_file_types: ${{ steps.set-outputs.outputs.sign_file_types }}
+      cert_name: ${{ steps.set-outputs.outputs.cert_name }}
+      sign_usecase: ${{ steps.set-outputs.outputs.sign_usecase }}
+      zip_file_sign: ${{ steps.set-outputs.outputs.zip_file_sign }}
+      extract_type: ${{ steps.set-outputs.outputs.extract_type }}
+
+    steps:
+      - name: Set variables
+        id: set-outputs
+        run: |
+          echo "pg_name=csgces" >> $GITHUB_OUTPUT
+          echo "scan_type=binary" >> $GITHUB_OUTPUT
+          echo "base_scan_type=binary" >> $GITHUB_OUTPUT
+          echo "sign_file_types=exe,dll,msi" >> $GITHUB_OUTPUT
+          echo "cert_name=dell_cpgroupEV2024" >> $GITHUB_OUTPUT
+          echo "sign_usecase=grswa" >> $GITHUB_OUTPUT
+          echo "zip_file_sign=true" >> $GITHUB_OUTPUT
+          echo "extract_type=yes" >> $GITHUB_OUTPUT
+      - name: Display Summary of inputs
+        uses: CSG-AiDevSecOps/csg-gh-actions/.github/actions/display-workflow-dispatch-inputs-summary@main
+
+  Build:
+    runs-on: [isg-ocp-x86-win-large]
+    needs: [Env-Vars]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.sourcecode_gitbranch }}
+
+      - name: Install pyyaml and Read jenkins.yaml
+        shell: cmd
+        run: |
+          pip install pyyaml
+          python ./.github/scripts/read_yaml.py "."
+          
+      - name: Update global.json to match installed SDK
+        shell: powershell
+        run: |
+           $globalJsonPath = Join-Path $env:GITHUB_WORKSPACE "global.json"
+           $jsonContent = @{
+              sdk = @{
+                  version = "8.0.407"
+              }
+           } | ConvertTo-Json -Depth 3
+           Set-Content -Path $globalJsonPath -Value $jsonContent -Encoding UTF8
+           
+      - name: Build Setup
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+          set PATH=C:\Tools\NuGet;%PATH%
+          echo "Pre Building with MSBuild"
+          msbuild "%GITHUB_WORKSPACE%\jenkins-ci.proj" /t:ci-prebuild
+          
+      - name: Build
+        shell: cmd
+        env:
+          MAJOR_NUM: ${{ env.MajorVersion }}
+          MINOR_NUM: ${{ env.MinorVersion }}
+          PATCH_NM: ${{ env.PatchNumber }}
+          BUILD_NUM: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+          set PATH=C:\Tools\NuGet;%PATH%
+          echo "Building with MSBuild"
+          msbuild "%GITHUB_WORKSPACE%\jenkins-ci.proj" /t:ci-compile ^
+            /p:MajorVersion=%MajorVersion% ^
+            /p:MinorVersion=%MinorVersion% ^
+            /p:PatchNumber=%PatchNumber% ^
+            /p:BuildNumber=%BuildNum% ^
+            /p:BranchName=%BranchName%
+            
+      - name: Unit Test
+        shell: cmd
+        if: ${{ inputs.run_unit_tests }}
+        env:
+          MAJOR_NUM: ${{ env.MajorVersion }}
+          MINOR_NUM: ${{ env.MinorVersion }}
+          PATCH_NM: ${{ env.PatchNumber }}
+          BUILD_NUM: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+          set PATH=C:\Tools\NuGet;%PATH%
+          echo Unit Test using MSBuild
+          msbuild "%GITHUB_WORKSPACE%\jenkins-ci.proj" /t:ci-test ^
+            /p:MajorVersion=%MajorVersion% ^
+            /p:MinorVersion=%MinorVersion% ^
+            /p:PatchNumber=%PatchNumber% ^
+            /p:BuildOverride=0 ^
+            /p:BuildNumber=%BuildNum% ^
+            /p:SignOnCredant=true ^
+            /p:BranchName=%BranchName%
+
+      - name: Blackduck-preProcessing
+        shell: cmd
+        env:
+          MAJOR_NUM: ${{ env.MajorVersion }}
+          MINOR_NUM: ${{ env.MinorVersion }}
+          PATCH_NM: ${{ env.PatchNumber }}
+          BUILD_NUM: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+          set PATH=C:\Tools\NuGet;%PATH%
+          echo Unit Test using MSBuild
+          msbuild "%GITHUB_WORKSPACE%\jenkins-ci.proj" /t:ci-blackduck-preProcessing ^
+            /p:MajorVersion=%MajorVersion% ^
+            /p:MinorVersion=%MinorVersion% ^
+            /p:PatchNumber=%PatchNumber% ^
+            /p:BuildOverride=0 ^
+            /p:BuildNumber=%BuildNum% ^
+            /p:BranchName=%BranchName%
+          
+      - name: Sonar Scan
+        if: ${{ inputs.run_sonar_scan }}
+        shell: cmd
+        continue-on-error: true
+        env:
+         MAJOR_NUM: ${{ env.MajorVersion }}
+         MINOR_NUM: ${{ env.MinorVersion }}
+         PATCH_NM: ${{ env.PatchNumber }}
+         BUILD_NUM: ${{ github.run_number }}
+         BRANCH: ${{ github.ref_name }}
+        run: |      
+         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+         set PATH=C:\Tools\NuGet;%PATH%
+         echo Sonar Scan using MSBuild
+         msbuild "%GITHUB_WORKSPACE%\${{ inputs.sourcecode_checkout_path }}\jenkins-ci.proj" /t:ci-sonarqube ^
+         /p:MajorVersion=%MajorVersion% ^
+         /p:MinorVersion=%MinorVersion% ^
+         /p:PatchNumber=%PatchNumber% ^
+         /p:BuildOverride=0 ^
+         /p:BuildNumber=%BuildNum% ^
+         /p:SignOnCredant=true ^
+         /p:Branch=%BRANCH%^
+         /p:ProductionEnvironment=true
+            
+      - name: Upload Signed Bin
+        uses: actions/upload-artifact@v3
+        with:
+          name: nga-bin
+          path: ${{ github.workspace }}/bin/
+
+      - name: Upload build tools and artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: buildtools-and-artifacts
+          if-no-files-found: warn
+          path: |
+            buildtools/**
+            **/*.dg
+            **/*.dgml
+            **/*.zip
+            **/*.htm
+            TestResults/**
+            TestReports/**
+            testcoverage/**
+            
+  Code-Signing:
+    needs: [Env-Vars, Build]
+    runs-on: [isg-ocp-x86-medium]
+
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: nga-bin
+          path: bin
+
+      - name: Setup & Create Zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+          cd "${{ github.workspace }}/bin/"
+          mkdir ${{ github.workspace }}/archives/
+          7z a -tzip ${{ github.workspace }}/archives/bin.zip -r '*.msi' '*.exe' '*.dll'
+          
+      - name: Code Signing
+        uses: CSG-AiDevSecOps/csg-gh-actions/.github/actions/drp-code-signing@main
+        with:
+          SIGN_DIRECTORIES: 'archives'
+          CSSV3_AUTH_PUBLIC_KEY: ${{ secrets.SRO_CSS_AUTH_PUB_KEY }}
+          SIGN_FILE_TYPES: ${{ needs.Env-Vars.outputs.sign_file_types }}
+          CERT_NAME: ${{ needs.Env-Vars.outputs.cert_name }}
+          SIGN_USECASE: ${{ needs.Env-Vars.outputs.sign_usecase }}
+          ZIP_FILE_SIGN: ${{ needs.Env-Vars.outputs.zip_file_sign }}
+          EXTRACT_TYPE: ${{ needs.Env-Vars.outputs.extract_type }}
+
+      - name: Unzip Signed Files
+        run: |
+          mv ${{ github.workspace }}/archives/bin.zip.signed ${{ github.workspace }}/archives/bin.zip
+          unzip -o ${{ github.workspace }}/archives/bin.zip -d "${{ github.workspace }}/bin"
+          rm ${{ github.workspace }}/archives/bin.zip
+      
+      - name: Upload Signed Bin
+        uses: actions/upload-artifact@v3
+        with:
+          name: nga-signed-bin
+          path: ${{ github.workspace }}/bin/
+
+  Blackduck-scan-job:
+    if: ${{inputs.BlackDuck}}
+    needs: [Env-Vars,Build,Code-Signing]
+    uses: CSG-AiDevSecOps/csg-gh-actions/.github/workflows/blackduck-binary-scan-rw.yml@pub/feature/dcf-scan-rw
+    secrets: inherit
+
+  Publish-Artifacts:
+    runs-on: [isg-ocp-x86-win-large]
+    needs: [Env-Vars, Build, Code-Signing]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.sourcecode_gitbranch }}
+
+      - name: Install pyyaml and Read jenkins.yaml
+        shell: cmd
+        run: |
+          pip install pyyaml
+          python ./.github/scripts/read_yaml.py "."
+          
+      - name: Download Buildtools
+        uses: actions/download-artifact@v3
+        with:
+          name: buildtools-and-artifacts
+
+      - name: Download Signed Bin
+        uses: actions/download-artifact@v3
+        with:
+          name: nga-signed-bin
+          path: ${{ github.workspace }}/bin
+
+      - name: Create Doc folder
+        shell: cmd
+        run: |
+          if not exist "%GITHUB_WORKSPACE%\doc" (
+            mkdir "%GITHUB_WORKSPACE%\doc"
+          )
+
+      - name: Nuget Release
+        shell: cmd
+        env:
+          MAJOR_NUM: ${{ env.MajorVersion }}
+          MINOR_NUM: ${{ env.MinorVersion }}
+          PATCH_NM: ${{ env.PatchNumber }}
+          BUILD_NUM: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          cd /d "%GITHUB_WORKSPACE%"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+          set PATH=C:\Tools\NuGet;%PATH%
+          echo "Nuget Packaging with MSBuild"
+          msbuild "%GITHUB_WORKSPACE%\jenkins-ci.proj" /t:ci-package ^
+            /p:MajorVersion=%MajorVersion% ^
+            /p:MinorVersion=%MinorVersion% ^
+            /p:PatchNumber=%PatchNumber% ^
+            /p:BuildNumber=%BuildNum% ^
+            /p:BranchName=%BranchName%
+
+      - name: List staged files (for debug)
+        run: |
+            Get-ChildItem -Recurse -Path "$env:GITHUB_WORKSPACE"
+            
+      - name: Publish Artifacts
+        shell: cmd
+        env:
+          BRANCH: ${{ env.BranchName }}
+        run: |
+          cd /d "%GITHUB_WORKSPACE%"
+          echo "current branch %BRANCH%"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+          set PATH=C:\Tools\NuGet;%PATH%
+          echo "Publishing with MSBuild"
+          msbuild "%GITHUB_WORKSPACE%\jenkins-ci.proj" /t:ci-publish ^
+            /p:MajorVersion=%MajorVersion% ^
+            /p:MinorVersion=%MinorVersion% ^
+            /p:PatchNumber=%PatchNumber% ^
+            /p:BuildNumber=%BuildNum% ^
+            /p:BranchName=%BRANCH% ^
+            /p:ProductionEnvironment=true
+
+      - name: Upload All Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: All-artifacts
+          path: |
+            ./*.zip
+            ./*.nupkg
+            ./*.csv
+            ./*.dg
+            ./*.dgml
+            ./*-summary.htm
+            ./*.pdf
+          if-no-files-found: ignore

@@ -1,6 +1,11 @@
 name: 01 - Building Blocks
 on:
   workflow_dispatch:
+    inputs:
+      greeting:
+        description: "The greeting to use in the job"
+        required: false
+        default: "Hello"
 
 jobs:
   echo-hello:

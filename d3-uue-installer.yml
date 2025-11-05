@@ -1,0 +1,109 @@
+name: d3-uue-installer CI
+on:
+  push:
+    branches:
+      - feature-github-migration
+  workflow_dispatch:
+    inputs: 
+      consumable_branch:
+        description: 'Branch used to pull the application artifacts from.'
+        type: string
+        default: ''
+      ProductionEnvironment:
+        type: boolean
+        description: 'ProductionEnvironment'
+        default: 'true'
+
+env:
+  CPG_ARTIFACTORY_USERNAME: ${{ vars.CPG_ARTIFACTORY_USERNAME }}
+  CPG_ARTIFACTORY_PASS: ${{ secrets.CPG_ARTIFACTORY_PASS }}
+  CREDANT_ARTIFACTORY_USER: ${{ secrets.CREDANT_ARTIFACTORY_USERNAME }}
+  CREDANT_ARTIFACTORY_PASS: ${{ secrets.CREDANT_ARTIFACTORY_PASSWORD }}
+  JFROG_CLI_AVOID_TOKEN: true
+  JFROG_CLI_AVOID_ACCESS_TOKEN: true
+  DeveloperBuild: false
+  isgArtifactoryUser: ${{ vars.CSG_TECHOPS_ARTIFACTORY_USERNAME }}
+  isgArtifactoryPassword: ${{ secrets.CSG_TECHOPS_ARTIFACTORY_TOKEN_RW }}
+  ProductionEnvironment: ${{ github.event_name == 'workflow_dispatch' && inputs.ProductionEnvironment || 'true' }}
+  CONSUMABLE_BRANCH: >
+    ${{
+      github.event_name == 'push' && 'develop' ||
+      (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release') && github.base_ref) ||
+      (github.event_name == 'workflow_dispatch' && startsWith(inputs.consumable_branch, 'release') && inputs.consumable_branch) ||
+      'development'
+    }}
+
+jobs:
+  Build:
+    runs-on: [isg-ocp-x86-win-large]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: CSG-Manageability/d3-uue-installer
+          ref: 'feature-github-migration'
+
+      - name: Update global.json to match installed SDK
+        shell: powershell
+        run: |
+         $globalJsonPath = Join-Path $env:GITHUB_WORKSPACE "global.json"
+         $jsonContent = @{
+            sdk = @{
+                version = "8.0.407"
+            }
+         } | ConvertTo-Json -Depth 3
+         Set-Content -Path $globalJsonPath -Value $jsonContent -Encoding UTF8
+
+      - name: Install PyYml - read jenkins.yaml file - export to env vars
+        shell: cmd
+        run: |
+          pip install pyyaml
+          python ./.github/scripts/read_yaml.py "."
+          
+      - name: Configure NuGet feeds (Artifactory)
+        shell: powershell
+        run: |
+          dotnet nuget add source "https://artifactory.credant.com/artifactory/api/nuget/nuget-release" `
+            --name artifactory-credant `
+            --username "${{ secrets.CREDANT_ARTIFACTORY_USERNAME }}" `
+            --password "${{ secrets.CREDANT_ARTIFACTORY_PASSWORD }}" `
+            --store-password-in-clear-text
+            
+          dotnet nuget add source "https://artifactory.cpg.dell.com/artifactory/api/nuget/nuget-release-local/" `
+            --name artifactory-cpg `
+            --username "${{ vars.CPG_ARTIFACTORY_USERNAME }}" `
+            --password "${{ secrets.CPG_ARTIFACTORY_PASS }}" `
+            --store-password-in-clear-text
+
+      - name: Build Setup
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+          set PATH=C:\Tools\NuGet;%PATH%
+          echo "Pre-Build step with MSBuild"
+          msbuild "%GITHUB_WORKSPACE%\jenkins-ci.proj" /t:ci-prebuild
+    
+      - name: Build / Compile 
+        shell: cmd
+        env:
+          MAJOR_NUM: ${{ env.MajorVersion }}
+          MINOR_NUM: ${{ env.MinorVersion }}
+          PATCH_NM: ${{ env.PatchVersion }}
+          BUILD_NUM: ${{ env.BuildVersion }}
+          CREDANT_ARTIFACTORY_USER: ${{ secrets.CREDANT_ARTIFACTORY_USERNAME }}
+          CREDANT_ARTIFACTORY_PASS: ${{ secrets.CREDANT_ARTIFACTORY_PASSWORD }}
+          JFROG_CLI_LOG_LEVEL: DEBUG
+          JFROG_CLI_OFFER_CONFIG: FALSE
+          JFROG_CLI_HOME_DIR: ${{ runner.temp }}
+          JFROG_CLI_TEMP_DIR: ${{ runner.temp }}
+          JFROG_CLI_AVOID_NEW_VERSION_WARNING: TRUE
+          consumable_branch: ${{ env.CONSUMABLE_BRANCH }}
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+          set PATH=C:\Tools\NuGet;%PATH%
+          msbuild "%GITHUB_WORKSPACE%\jenkins-ci.proj" ^
+          /t:ci-compile ^
+          /p:Configuration=Release ^
+          /p:is_production=1 ^
+          /p:credantArtifactoryUser=${{ env.CREDANT_ARTIFACTORY_USER }} ^
+          /p:credantArtifactoryPassword=${{ env.CREDANT_ARTIFACTORY_PASS }}
