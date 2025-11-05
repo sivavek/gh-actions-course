@@ -1,0 +1,26 @@
+name: Testing manual approval
+on:
+  push:
+    branches:
+      - main
+jobs:
+  stage1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo Job
+        run: echo "This is the first stage."
+  approval:
+    needs: stage1
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+    steps:
+      - name: Manual Approval
+
+        run: echo "This job requires manual approval to proceed."
+  stage2:
+    needs: approval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo Job
+        run: echo "This is the second stage after approval."
