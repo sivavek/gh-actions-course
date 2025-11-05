@@ -1,26 +1,57 @@
-name: Testing manual approval
-on:
-  push:
-    branches:
-      - main
-jobs:
-  stage1:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Echo Job
-        run: echo "This is the first stage."
-  approval:
-    needs: stage1
-    runs-on: ubuntu-latest
-    environment:
-      name: prod
-    steps:
-      - name: Manual Approval
+name: JSON Input Workflow Example
 
-        run: echo "This job requires manual approval to proceed."
-  stage2:
-    needs: approval
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'JSON input with five flags (0/1)'
+        required: true
+        default: '{"featureA":"0","featureB":"1","featureC":"0","featureD":"1","featureE":"0"}'
+
+jobs:
+  setup:
+    name: Parse JSON Input and Export as Env
     runs-on: ubuntu-latest
+    outputs:
+      featureA: ${{ steps.parse.outputs.featureA }}
+      featureB: ${{ steps.parse.outputs.featureB }}
+      featureC: ${{ steps.parse.outputs.featureC }}
+      featureD: ${{ steps.parse.outputs.featureD }}
+      featureE: ${{ steps.parse.outputs.featureE }}
+
     steps:
-      - name: Echo Job
-        run: echo "This is the second stage after approval."
+      - name: Parse JSON input
+        id: parse
+        run: |
+          CONFIG='${{ github.event.inputs.config }}'
+          echo "Config received: $CONFIG"
+
+          # Extract and export values using jq
+          echo "featureA=$(echo $CONFIG | jq -r '.featureA')" >> $GITHUB_OUTPUT
+          echo "featureB=$(echo $CONFIG | jq -r '.featureB')" >> $GITHUB_OUTPUT
+          echo "featureC=$(echo $CONFIG | jq -r '.featureC')" >> $GITHUB_OUTPUT
+          echo "featureD=$(echo $CONFIG | jq -r '.featureD')" >> $GITHUB_OUTPUT
+          echo "featureE=$(echo $CONFIG | jq -r '.featureE')" >> $GITHUB_OUTPUT
+
+  use-inputs:
+    name: Use Parsed JSON Values
+    runs-on: ubuntu-latest
+    needs: setup
+    env:
+      FEATURE_A: ${{ needs.setup.outputs.featureA }}
+      FEATURE_B: ${{ needs.setup.outputs.featureB }}
+      FEATURE_C: ${{ needs.setup.outputs.featureC }}
+      FEATURE_D: ${{ needs.setup.outputs.featureD }}
+      FEATURE_E: ${{ needs.setup.outputs.featureE }}
+    steps:
+      - name: Print values
+        run: |
+          echo "Feature A = $FEATURE_A"
+          echo "Feature B = $FEATURE_B"
+          echo "Feature C = $FEATURE_C"
+          echo "Feature D = $FEATURE_D"
+          echo "Feature E = $FEATURE_E"
+
+      - name: Example conditional
+        if: env.FEATURE_A == '1'
+        run: echo "Feature A is ENABLED!"
