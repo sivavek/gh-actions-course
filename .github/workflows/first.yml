@@ -24,20 +24,3 @@ jobs:
     steps:
       - name: Echo Job
         run: echo "This is the second stage after approval."
-
-  approval2:
-    needs: stage2
-    runs-on: ubuntu-latest
-    steps:
-      - name: Slash Command Approval
-        uses: peter-evans/slash-command-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commands: approve
-          reaction-token: ${{ secrets.GITHUB_TOKEN }}
-  stage3:
-    needs: approval2
-    runs-on: ubuntu-latest
-    steps:
-      - name: Echo Job
-        run: echo "This is the third stage after slash command approval."
